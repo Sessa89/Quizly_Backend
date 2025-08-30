@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.contrib.auth import authenticate
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -30,7 +30,6 @@ def set_jwt_cookies(response, refresh: RefreshToken):
     )
     return response
 
-
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -54,3 +53,24 @@ class LoginView(APIView):
             status=status.HTTP_200_OK,
         )
         return set_jwt_cookies(resp, refresh)
+       
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        refresh_token = request.COOKIES.get('refresh_token')
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except Exception:
+                pass
+
+        resp = Response(
+            {'detail': 'Log-Out successfully! All Tokens will be deleted. Refresh token is now invalid.'},
+            status=status.HTTP_200_OK
+        )
+        
+        resp.delete_cookie('access_token', path='/', samesite='Lax')
+        resp.delete_cookie('refresh_token', path='/', samesite='Lax')
+        return resp
