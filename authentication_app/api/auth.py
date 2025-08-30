@@ -74,3 +74,31 @@ class LogoutView(APIView):
         resp.delete_cookie('access_token', path='/', samesite='Lax')
         resp.delete_cookie('refresh_token', path='/', samesite='Lax')
         return resp
+    
+class CookieTokenRefreshView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_str = request.COOKIES.get('refresh_token')
+        if not refresh_str:
+            return Response({'detail': 'Missing refresh token.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            refresh = RefreshToken(refresh_str)
+            new_access = refresh.access_token
+        except Exception:
+            return Response({'detail': 'Invalid refresh token.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        resp = Response({'detail': 'Token refreshed', 'access': str(new_access)}, status=status.HTTP_200_OK)
+
+        secure_cookie = not settings.DEBUG
+        resp.set_cookie(
+            key='access_token',
+            value=str(new_access),
+            httponly=True,
+            samesite='Lax',
+            secure=secure_cookie,
+            max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
+            path='/',
+        )
+        return resp
