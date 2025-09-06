@@ -2,13 +2,13 @@ from django.conf import settings
 
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied
-from rest_framework.generics import ListAPIView, RetrieveAPIView
+from rest_framework.generics import ListAPIView, RetrieveUpdateAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..models import Quiz
-from .serializers import QuizSerializer
+from .serializers import QuizSerializer, QuizUpdateSerializer
 from .services import create_quiz_from_youtube
 
 class CreateQuizView(APIView):
@@ -40,9 +40,13 @@ class QuizzesListView(ListAPIView):
             .order_by('-created_at')
         )
     
-class QuizDetailView(RetrieveAPIView):
-    serializer_class = QuizSerializer
+class QuizDetailView(RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method == 'PUT':
+            return QuizUpdateSerializer
+        return QuizSerializer
 
     def get_object(self):
         quiz_id = self.kwargs.get('id') or self.kwargs.get('pk')
@@ -57,3 +61,11 @@ class QuizDetailView(RetrieveAPIView):
             raise PermissionDenied('You do not have permission to access this quiz.')
 
         return obj
+    
+    def put(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=False)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(QuizSerializer(instance).data, status=status.HTTP_200_OK)
