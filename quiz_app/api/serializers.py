@@ -29,3 +29,25 @@ class QuizUpdateSerializer(serializers.ModelSerializer):
         except ValueError:
             raise serializers.ValidationError('Invalid YouTube URL.')
         return YOUTUBE_CANONICAL.format(vid=vid)
+    
+class QuizPartialUpdateSerializer(serializers.ModelSerializer):
+    title = serializers.CharField(required=False, max_length=255)
+    description = serializers.CharField(required=False, allow_blank=False)
+    video_url = serializers.URLField(required=False)
+
+    class Meta:
+        model = Quiz
+        fields = ['title', 'description', 'video_url']
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError('At least one field must be provided.')
+        return attrs
+
+    def validate_video_url(self, value: str) -> str:
+        from .services import extract_youtube_id, YOUTUBE_CANONICAL
+        try:
+            vid = extract_youtube_id(value)
+        except ValueError:
+            raise serializers.ValidationError('Invalid YouTube URL.')
+        return YOUTUBE_CANONICAL.format(vid=vid)

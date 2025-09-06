@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..models import Quiz
-from .serializers import QuizSerializer, QuizUpdateSerializer
+from .serializers import QuizSerializer, QuizUpdateSerializer, QuizPartialUpdateSerializer
 from .services import create_quiz_from_youtube
 
 class CreateQuizView(APIView):
@@ -46,6 +46,8 @@ class QuizDetailView(RetrieveUpdateAPIView):
     def get_serializer_class(self):
         if self.request.method == 'PUT':
             return QuizUpdateSerializer
+        if self.request.method == 'PATCH':
+            return QuizPartialUpdateSerializer
         return QuizSerializer
 
     def get_object(self):
@@ -56,10 +58,8 @@ class QuizDetailView(RetrieveUpdateAPIView):
                    .get(pk=quiz_id))
         except Quiz.DoesNotExist:
             raise NotFound('Quiz not found.')
-
         if obj.owner_id != self.request.user.id:
             raise PermissionDenied('You do not have permission to access this quiz.')
-
         return obj
     
     def put(self, request, *args, **kwargs):
@@ -68,4 +68,12 @@ class QuizDetailView(RetrieveUpdateAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
+        return Response(QuizSerializer(instance).data, status=status.HTTP_200_OK)
+    
+    def patch(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
         return Response(QuizSerializer(instance).data, status=status.HTTP_200_OK)
