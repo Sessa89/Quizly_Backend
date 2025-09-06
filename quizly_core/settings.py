@@ -10,11 +10,16 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / '.env')
+
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 
 
 # Quick-start development settings - unsuitable for production
@@ -43,6 +48,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
 
     'authentication_app',
+    'quiz_app',
 ]
 
 MIDDLEWARE = [
@@ -144,3 +150,15 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
+
+FFMPEG_DIR = os.environ.get('FFMPEG_DIR', r"C:\ffmpeg\bin")
+if FFMPEG_DIR and FFMPEG_DIR not in os.environ.get('PATH', ''):
+    os.environ['PATH'] = FFMPEG_DIR + os.pathsep + os.environ.get('PATH', '')
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+QUIZ_TMP_DIR = BASE_DIR / 'tmp'
+QUIZ_TMP_DIR.mkdir(exist_ok=True) if hasattr(QUIZ_TMP_DIR, 'mkdir') else None
+
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'small')
