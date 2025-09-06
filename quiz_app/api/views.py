@@ -1,8 +1,10 @@
 from django.conf import settings
-from rest_framework.views import APIView
+
+from rest_framework import status
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework.views import APIView
 
 from ..models import Quiz
 from .serializers import QuizSerializer
@@ -24,3 +26,15 @@ class CreateQuizView(APIView):
                 return Response({'detail': f"Internal server error: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             return Response({'detail': 'Internal server error.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(QuizSerializer(quiz).data, status=status.HTTP_201_CREATED)
+    
+class QuizzesListView(ListAPIView):
+    serializer_class = QuizSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return (
+            Quiz.objects
+            .filter(owner=self.request.user)
+            .prefetch_related('questions')
+            .order_by('-created_at')
+        )
