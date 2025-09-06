@@ -19,7 +19,37 @@ from datetime import timedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
+SECRET_KEY = os.getenv('SECRET_KEY') or 'dev-only-change-me'
+
+ALLOWED_HOSTS = [h for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h] if not DEBUG else []
+CSRF_TRUSTED_ORIGINS = [o for o in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if o]
+
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+SECURE_SSL_REDIRECT = True
+SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+
+COOKIE_DOMAIN = os.getenv('COOKIE_DOMAIN')
+COOKIE_SAMESITE = os.getenv('COOKIE_SAMESITE', 'Lax')
+
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'small')
+FFMPEG_DIR = os.getenv('FFMPEG_DIR', r"C:\ffmpeg\bin")
+if FFMPEG_DIR and FFMPEG_DIR not in os.environ.get('PATH', ''):
+    os.environ['PATH'] = FFMPEG_DIR + os.pathsep + os.environ.get('PATH', '')
+
+if not DEBUG and not GEMINI_API_KEY:
+    raise RuntimeError('GEMINI_API_KEY not set in environment')
 
 
 # Quick-start development settings - unsuitable for production
@@ -33,6 +63,8 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+CORS_ALLOWED_ORIGINS = [o for o in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if o]
+
 
 # Application definition
 
@@ -45,13 +77,16 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'rest_framework',
+    'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    'corsheaders',
 
     'authentication_app',
     'quiz_app',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -151,14 +186,7 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 
-FFMPEG_DIR = os.environ.get('FFMPEG_DIR', r"C:\ffmpeg\bin")
-if FFMPEG_DIR and FFMPEG_DIR not in os.environ.get('PATH', ''):
-    os.environ['PATH'] = FFMPEG_DIR + os.pathsep + os.environ.get('PATH', '')
-
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 QUIZ_TMP_DIR = BASE_DIR / 'tmp'
 QUIZ_TMP_DIR.mkdir(exist_ok=True) if hasattr(QUIZ_TMP_DIR, 'mkdir') else None
-
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'small')

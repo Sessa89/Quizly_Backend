@@ -6,8 +6,21 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+def _cookie_kwargs():
+    kwargs = dict(
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite=getattr(settings, 'COOKIE_SAMESITE', 'Lax'),
+        path='/',
+    )
+    domain = getattr(settings, 'COOKIE_DOMAIN', None)
+    if domain:
+        kwargs['domain'] = domain
+    return kwargs
+
 def set_jwt_cookies(response, refresh: RefreshToken):
     access = refresh.access_token
+    common = _cookie_kwargs()
     secure_cookie = not settings.DEBUG
 
     response.set_cookie(
