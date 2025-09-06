@@ -1,7 +1,8 @@
 from django.conf import settings
 
 from rest_framework import status
-from rest_framework.generics import ListAPIView
+from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -38,3 +39,21 @@ class QuizzesListView(ListAPIView):
             .prefetch_related('questions')
             .order_by('-created_at')
         )
+    
+class QuizDetailView(RetrieveAPIView):
+    serializer_class = QuizSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        quiz_id = self.kwargs.get('id') or self.kwargs.get('pk')
+        try:
+            obj = (Quiz.objects
+                   .prefetch_related('questions')
+                   .get(pk=quiz_id))
+        except Quiz.DoesNotExist:
+            raise NotFound('Quiz not found.')
+
+        if obj.owner_id != self.request.user.id:
+            raise PermissionDenied('You do not have permission to access this quiz.')
+
+        return obj
