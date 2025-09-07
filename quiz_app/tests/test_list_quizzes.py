@@ -1,3 +1,15 @@
+'''API tests for listing quizzes.
+
+Covers:
+- 401 when unauthenticated.
+- 200 and filtering to only the authenticated user's quizzes.
+- Ensures nested 'questions' are included with expected shape.
+
+Notes:
+- Uses the list endpoint: GET /api/quizzes/.
+- Creates quizzes for two users; only the owner's quizzes should be returned.
+'''
+
 from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework.test import APITestCase
@@ -5,7 +17,11 @@ from rest_framework import status
 from quiz_app.models import Quiz, Question
 
 class QuizzesListTests(APITestCase):
+    '''Tests for GET /api/quizzes/.'''
+
     def setUp(self):
+        '''Create two users and three quizzes (two for u1, one for u2).'''
+
         self.url = reverse('api-quizzes')
         self.u1 = User.objects.create_user(username='u1', password='Abc123', email='u1@x.com')
         self.u2 = User.objects.create_user(username='u2', password='Abc123', email='u2@x.com')
@@ -26,10 +42,14 @@ class QuizzesListTests(APITestCase):
                                 question_options=['A','B','C','D'], answer='C')
 
     def test_list_quizzes_requires_auth(self):
+        '''Unauthenticated requests must return 401.'''
+
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_list_quizzes_returns_only_own(self):
+        '''Authenticated user sees only their own quizzes with nested questions.'''
+
         self.client.force_authenticate(self.u1)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)

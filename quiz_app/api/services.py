@@ -1,3 +1,23 @@
+'''Service layer for Quiz generation: yt-dlp → Whisper → Gemini.
+
+Responsibilities:
+- Normalize and validate YouTube URLs.
+- Check video availability and (optionally) max duration.
+- Download audio with yt-dlp.
+- Ensure FFmpeg is available and transcribe audio with Whisper.
+- Build a strict LLM prompt and call Gemini to generate a quiz.
+- Validate the returned quiz JSON and persist Quiz/Question models.
+
+Error handling contract:
+- Expected, user-facing problems (invalid URL, unavailable video, missing FFmpeg,
+  missing GEMINI_API_KEY, invalid LLM JSON, etc.) raise ValueError with a clear
+  message. The API view maps ValueError → HTTP 400.
+- Unexpected failures bubble up as generic exceptions (HTTP 500 in the view).
+
+Dependencies:
+- yt-dlp, FFmpeg (binary on PATH), whisper (OpenAI Whisper), google-genai (Gemini).
+'''
+
 import json, os, re, tempfile, contextlib, pathlib, shutil
 import yt_dlp
 import whisper
@@ -9,6 +29,23 @@ from yt_dlp.utils import DownloadError, ExtractorError
 YOUTUBE_CANONICAL = 'https://www.youtube.com/watch?v={vid}'
 
 def extract_youtube_id(url: str) -> str:
+    '''Extract a YouTube video ID from common URL forms.
+
+    Supports:
+      - https://www.youtube.com/watch?v=<id>
+      - https://youtu.be/<id>
+      - https://www.youtube.com/embed/<id>
+
+    Args:
+        url: The input URL string.
+
+    Returns:
+        The 11-character YouTube video ID.
+
+    Raises:
+        ValueError: If the URL is unsupported or no ID can be extracted.
+    '''
+
     if not url or 'youtube' not in url and 'youtu.be' not in url:
         raise ValueError('Unsupported URL.')
     
@@ -21,6 +58,19 @@ def extract_youtube_id(url: str) -> str:
     raise ValueError('Could not extract YouTube video id.')
 
 def ensure_video_available(url: str, max_duration_sec: int | None = None):
+    '''Check if a YouTube video is available and optionally enforce a max duration.
+
+    Args:
+        url: Canonical YouTube watch URL.
+        max_duration_sec: Optional maximum allowed duration in seconds.
+
+    Returns:
+        The yt-dlp info dict (metadata) for the video.
+
+    Raises:
+        ValueError: If the video is unavailable/invalid or exceeds the duration limit.
+    '''
+
     try:
         with yt_dlp.YoutubeDL({'quiet': True, 'noplaylist': True}) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -31,6 +81,18 @@ def ensure_video_available(url: str, max_duration_sec: int | None = None):
         raise ValueError('YouTube video unavailable or invalid.')
 
 def download_audio(url: str) -> str:
+    '''Download best-available audio stream for a YouTube video.
+
+    Args:
+        url: Any YouTube URL containing a valid video ID (normalized internally).
+
+    Returns:
+        Absolute file path to the downloaded audio file.
+
+    Raises:
+        ValueError: If the download fails or no file is produced.
+    '''
+
     try:
         vid = extract_youtube_id(url)
         outtmpl = str((getattr(settings, 'QUIZ_TMP_DIR', pathlib.Path(tempfile.gettempdir())) / f"{vid}.%(ext)s").resolve())
@@ -50,6 +112,8 @@ def download_audio(url: str) -> str:
         raise ValueError('Failed to download audio from Youtube.')
 
 def _require_ffmpeg():
+    '''Ensure FFmpeg is available on PATH; attempt to extend PATH from settings.'''
+
     ff = shutil.which('ffmpeg')
     if not ff and getattr(settings, 'FFMPEG_DIR', None):
         os.environ['PATH'] = settings.FFMPEG_DIR + os.pathsep + os.environ.get('PATH', '')
@@ -59,6 +123,18 @@ def _require_ffmpeg():
     return ff
 
 def transcribe_audio(audio_path: str) -> str:
+    '''Transcribe an audio file to text using Whisper.
+
+    Args:
+        audio_path: Path to the downloaded audio file.
+
+    Returns:
+        The transcribed text (stripped).
+
+    Raises:
+        ValueError: If FFmpeg is missing or transcription fails.
+    '''
+
     _require_ffmpeg()
     model_name = getattr(settings, 'WHISPER_MODEL', 'small')
     try:
@@ -74,6 +150,8 @@ def transcribe_audio(audio_path: str) -> str:
         raise ValueError(f"Transcription failed: {e}")
 
 def build_quiz_prompt(transcript: str, num_questions: int = 10) -> str:
+    '''Construct a strict prompt instructing Gemini to return valid JSON only.'''
+
     return f"""
 Based on the following transcript, generate a quiz in valid JSON format.
 
@@ -102,6 +180,19 @@ Transcript:
 """.strip()
 
 def generate_quiz_with_gemini(transcript: str, num_questions: int = 10) -> dict:
+    '''Call Gemini to generate a quiz JSON and parse/validate the result.
+
+    Args:
+        transcript: The transcribed text.
+        num_questions: Number of questions to request and enforce.
+
+    Returns:
+        A Python dict with keys: title, description, questions[list].
+
+    Raises:
+        ValueError: If GEMINI_API_KEY is missing, the call fails, or the JSON is invalid.
+    '''
+
     api_key = getattr(settings, 'GEMINI_API_KEY', '')
     if not api_key:
         raise ValueError('GEMINI_API_KEY is not configured.')
@@ -129,6 +220,8 @@ def generate_quiz_with_gemini(transcript: str, num_questions: int = 10) -> dict:
     return data
 
 def validate_quiz_dict(d: dict, num_questions: int = 10):
+    '''Validate the shape and constraints of the generated quiz JSON.'''
+
     if not isinstance(d, dict):
         raise ValueError('Quiz must be a JSON object.')
     if "title" not in d or 'description' not in d or 'questions' not in d:
@@ -146,6 +239,21 @@ def validate_quiz_dict(d: dict, num_questions: int = 10):
             raise ValueError('Answer must be one of question_options.')
 
 def create_quiz_from_youtube(url: str, owner, num_questions: int = 10):
+    '''End-to-end pipeline: validate → download → transcribe → LLM → persist.
+
+    Args:
+        url: Any YouTube URL containing a valid video ID.
+        owner: The Django User who will own the quiz.
+        num_questions: Number of questions to generate and enforce.
+
+    Returns:
+        The created Quiz instance (with related Questions saved).
+
+    Raises:
+        ValueError: For expected failure modes (invalid URL, video unavailable,
+        FFmpeg missing, LLM errors, invalid JSON, etc.).
+    '''
+
     canonical_url = YOUTUBE_CANONICAL.format(vid=extract_youtube_id(url))
     ensure_video_available(canonical_url, max_duration_sec=getattr(settings, 'QUIZ_MAX_DURATION_SEC', None))    
     audio_path = download_audio(canonical_url)
