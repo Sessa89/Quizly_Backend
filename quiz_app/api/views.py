@@ -2,7 +2,7 @@ from django.conf import settings
 
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied
-from rest_framework.generics import ListAPIView, RetrieveUpdateAPIView
+from rest_framework.generics import ListAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -40,7 +40,7 @@ class QuizzesListView(ListAPIView):
             .order_by('-created_at')
         )
     
-class QuizDetailView(RetrieveUpdateAPIView):
+class QuizDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
@@ -53,9 +53,7 @@ class QuizDetailView(RetrieveUpdateAPIView):
     def get_object(self):
         quiz_id = self.kwargs.get('id') or self.kwargs.get('pk')
         try:
-            obj = (Quiz.objects
-                   .prefetch_related('questions')
-                   .get(pk=quiz_id))
+            obj = (Quiz.objects.prefetch_related('questions').get(pk=quiz_id))
         except Quiz.DoesNotExist:
             raise NotFound('Quiz not found.')
         if obj.owner_id != self.request.user.id:
@@ -75,5 +73,11 @@ class QuizDetailView(RetrieveUpdateAPIView):
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        
+
         return Response(QuizSerializer(instance).data, status=status.HTTP_200_OK)
+    
+    def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
